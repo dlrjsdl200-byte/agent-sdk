@@ -1,0 +1,64 @@
+name: Bazaar Keepalive (weekly self-pay)
+
+# WHY: CDP's x402 Bazaar drops any resource with no settled payment in the
+# last 30 days from search results. One $0.001 settled call per week keeps
+# MGO (api.mgo.chain-ops.xyz) continuously discoverable. This also dogfoods
+# the public @chain-ops/agent-sdk pay() path on a schedule.
+#
+# COST: ~$0.001 USDC/run × ~4.3 runs/mo ≈ $0.004/mo, paid from the wallet
+# behind BAZAAR_PAY_PRIVATE_KEY. Use a wallet DIFFERENT from the payTo wallet
+# (0x665bab4…dd7a) so self-payments stay distinguishable from real revenue.
+#
+# SAFETY: If the BAZAAR_PAY_PRIVATE_KEY secret is absent, the run does a
+# DRY_RUN (probe only, no spend) and exits 0 — so enabling the schedule
+# before you add the secret can never accidentally move funds.
+
+on:
+  schedule:
+    # Every Monday 09:00 KST (00:00 UTC). Weekly is well inside the 30-day window.
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Force dry run (probe only, no spend)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: bazaar-keepalive
+  cancel-in-progress: false
+
+jobs:
+  self-pay:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Decide run mode
+        id: mode
+        env:
+          HAS_KEY: ${{ secrets.BAZAAR_PAY_PRIVATE_KEY != '' }}
+          FORCE_DRY: ${{ github.event.inputs.dry_run }}
+        run: |
+          if [ "$FORCE_DRY" = "true" ] || [ "$HAS_KEY" != "true" ]; then
+            echo "dry_run=1" >> "$GITHUB_OUTPUT"
+            echo "No key or forced dry run → DRY_RUN (no spend)."
+          else
+            echo "dry_run=0" >> "$GITHUB_OUTPUT"
+            echo "Key present → LIVE self-payment."
+          fi
+
+      - name: Bazaar keepalive payment
+        env:
+          PRIVATE_KEY: ${{ secrets.BAZAAR_PAY_PRIVATE_KEY }}
+          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
+        run: node --import tsx examples/bazaar-reactivate.ts
