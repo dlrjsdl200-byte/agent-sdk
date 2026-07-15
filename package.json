@@ -1,6 +1,6 @@
 {
   "name": "@chain-ops/agent-sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "One-line SDK for x402 (V1 + V2) payments with ERC-8004 agent identity. Pay, prove, reputation — in a single call.",
   "keywords": [
     "x402",
