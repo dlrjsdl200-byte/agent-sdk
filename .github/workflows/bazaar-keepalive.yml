@@ -24,6 +24,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: write   # for the heartbeat commit below
+
 concurrency:
   group: bazaar-keepalive
   cancel-in-progress: false
@@ -62,3 +65,14 @@ jobs:
           PRIVATE_KEY: ${{ secrets.BAZAAR_PAY_PRIVATE_KEY }}
           DRY_RUN: ${{ steps.mode.outputs.dry_run }}
         run: node --import tsx examples/bazaar-reactivate.ts
+
+      # GitHub silently disables scheduled workflows after 60 days without
+      # repository activity (this happened 2026-09-14 and the Bazaar listing
+      # lapsed). An empty commit per scheduled run keeps the repo "active".
+      - name: Heartbeat commit (prevents 60-day schedule auto-disable)
+        if: github.event_name == 'schedule'
+        run: |
+          git config user.name "bazaar-keepalive[bot]"
+          git config user.email "bazaar-keepalive@users.noreply.github.com"
+          git commit --allow-empty -m "chore(keepalive): heartbeat $(date -u +%F)"
+          git push
