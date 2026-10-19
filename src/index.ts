@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 
-export { Agent, createAgent } from "./agent.js";
+export { Agent, createAgent, DEFAULT_MAX_PRICE } from "./agent.js";
 
 export type {
   AgentIdentity,

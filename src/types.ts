@@ -70,13 +70,28 @@ export interface TrustScore {
  * Options for `agent.pay()` — the single biggest API of the SDK.
  */
 export interface PayOptions {
-  /** Attach ERC-8004 identity proof to the x402 request. Default: true. */
+  /**
+   * @deprecated Not implemented: the SDK does not yet attach an ERC-8004 proof
+   * to the request. The flag is accepted and ignored. Planned for 0.2.0.
+   */
   attachIdentity?: boolean;
   /** Reject if counterparty trust score is below this threshold. Default: disabled. */
   minCounterpartyScore?: number;
-  /** Maximum USDC (in micro-units, 1e-6) willing to pay. Hard cap. */
+  /**
+   * ERC-8004 tokenId of the counterparty (the server you are paying). Required
+   * when `minCounterpartyScore` is set; the SDK cannot derive it from `payTo`.
+   */
+  counterpartyAgentId?: string;
+  /**
+   * Maximum USDC (in micro-units, 1e-6) willing to pay. Hard cap.
+   * Default: 1_000_000n (1 USDC). Pass a larger value explicitly if a resource
+   * legitimately costs more.
+   */
   maxPrice?: bigint;
-  /** Automatically update reputation after successful settlement. Default: true. */
+  /**
+   * @deprecated Not implemented: no on-chain feedback is written after
+   * settlement yet. The flag is accepted and ignored. Planned for 0.2.0.
+   */
   updateReputation?: boolean;
   /** Override network for this specific call. */
   network?: SupportedNetwork;

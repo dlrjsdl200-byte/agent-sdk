@@ -24,6 +24,7 @@
  */
 
 import { getAddress, toHex, type Hex, type LocalAccount } from "viem";
+import { webcrypto as nodeWebcrypto } from "node:crypto";
 
 import { CHAINS } from "./chains.js";
 import type { SupportedNetwork } from "./types.js";
@@ -239,18 +240,37 @@ export function normalizeRequirement(req: PaymentRequirements): NormalizedRequir
   const chainId = resolveChainIdFromNetworkString(req.network);
   if (chainId === null) return null;
 
+  // This SDK signs EIP-3009 TransferWithAuthorization only. Newer x402 servers
+  // can ask for a Permit2 transfer instead (`extra.assetTransferMethod`), which
+  // needs a different signature: skip those entries rather than sign garbage.
+  const method = (req.extra as { assetTransferMethod?: string } | undefined)?.assetTransferMethod;
+  if (method && method !== "eip3009") return null;
+
   const isV2 = "amount" in req;
   const amountStr = isV2 ? req.amount : req.maxAmountRequired;
+
+  // Malformed 402s (bad address, non-numeric amount) are "not compatible", not a crash.
+  let amount: bigint;
+  let asset: `0x${string}`;
+  let payTo: `0x${string}`;
+  try {
+    amount = BigInt(amountStr);
+    asset = getAddress(req.asset) as `0x${string}`;
+    payTo = getAddress(req.payTo) as `0x${string}`;
+  } catch {
+    return null;
+  }
+  if (amount < 0n) return null;
 
   return {
     version: isV2 ? 2 : 1,
     scheme: "exact",
     chainId,
     networkString: req.network,
-    amount: BigInt(amountStr),
-    asset: getAddress(req.asset) as `0x${string}`,
-    payTo: getAddress(req.payTo) as `0x${string}`,
-    maxTimeoutSeconds: req.maxTimeoutSeconds,
+    amount,
+    asset,
+    payTo,
+    maxTimeoutSeconds: Number.isFinite(req.maxTimeoutSeconds) ? req.maxTimeoutSeconds : 300,
     extra: { ...(req.extra ?? {}) },
     raw: req,
   };
@@ -316,7 +336,9 @@ export function selectPaymentRequirements(
 
 export function createNonce(): Hex {
   const bytes = new Uint8Array(32);
-  globalThis.crypto.getRandomValues(bytes);
+  // Node 18 has no global `crypto` without a flag; fall back to node:crypto.
+  const webcrypto = (globalThis as { crypto?: Crypto }).crypto ?? nodeWebcrypto;
+  webcrypto.getRandomValues(bytes);
   return toHex(bytes);
 }
 

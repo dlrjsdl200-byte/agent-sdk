@@ -42,7 +42,15 @@ import {
 } from "./payment.js";
 
 // Package version is inlined here. Keep in lockstep with package.json.
-const SDK_VERSION = "0.0.1";
+// Keep in sync with package.json "version" (recorded on-chain in the registration JSON).
+const SDK_VERSION = "0.1.2";
+
+/**
+ * Default hard cap for `pay()` when the caller does not pass `maxPrice`:
+ * 1 USDC (1_000_000 micro-units). Signing is off-chain and cheap, so without a
+ * cap a hostile 402 could ask for an arbitrarily large USDC authorization.
+ */
+export const DEFAULT_MAX_PRICE = 1_000_000n;
 
 /**
  * Main Agent class — the one-line entry point for x402 × ERC-8004.
@@ -240,9 +248,11 @@ export class Agent {
     }
 
     // --- Step 3: pick a normalized requirement -----------------------------
+    // Always apply a cap: the caller's, or DEFAULT_MAX_PRICE (1 USDC).
+    const maxPrice = opts.maxPrice ?? DEFAULT_MAX_PRICE;
     const norm: NormalizedRequirement | null = selectRequirement(required.accepts, {
       agentNetwork: network,
-      maxPrice: opts.maxPrice,
+      maxPrice,
     });
     if (!norm) {
       const offered = required.accepts
@@ -250,15 +260,15 @@ export class Agent {
         .join(", ");
       throw new Error(
         `[agent-sdk] pay(): no compatible requirement for network=${network}` +
-          (opts.maxPrice !== undefined ? ` within maxPrice=${opts.maxPrice}` : "") +
+          ` within maxPrice=${maxPrice}` +
+          (opts.maxPrice === undefined ? " (default cap 1 USDC; pass opts.maxPrice to raise it)" : "") +
           `. Server offered: ${offered}`,
       );
     }
 
     // --- Step 4 (optional): counterparty trust check -----------------------
     let counterpartyScore: number | undefined;
-    const counterpartyAgentId =
-      (opts as { counterpartyAgentId?: string }).counterpartyAgentId;
+    const counterpartyAgentId = opts.counterpartyAgentId;
 
     if (opts.minCounterpartyScore !== undefined) {
       if (!counterpartyAgentId) {
@@ -351,14 +361,34 @@ export class Agent {
     const reputationAddress = ERC8004_ADDRESSES[this.network].reputationRegistry;
     const agentIdBigInt = BigInt(agentId);
 
-    // ReputationRegistry.getSummary(agentId, [], "starred", "")
-    // Empty clientAddresses array = full-population summary (any client).
+    // The reference ReputationRegistry reverts with "clientAddresses required"
+    // when the array is empty, so the "full population" summary has to be
+    // built from the explicit list of clients that left feedback.
+    const clients = (await this._publicClient.readContract({
+      address: reputationAddress,
+      abi: reputationRegistryAbi,
+      functionName: "getClients",
+      args: [agentIdBigInt],
+    })) as readonly `0x${string}`[];
+
+    if (clients.length === 0) {
+      // No feedback yet: neutral score, nothing to summarize on-chain.
+      return {
+        agentId,
+        score: normalizeStarredToScore(0n, 0, 0n),
+        components: { age: 0, settlements: 0, disputes: 0, oracle: 0 },
+        computedAt: new Date().toISOString(),
+        source: "onchain",
+      };
+    }
+
+    // ReputationRegistry.getSummary(agentId, clients, "starred", "")
     // tag2 left blank per spec convention.
     const result = (await this._publicClient.readContract({
       address: reputationAddress,
       abi: reputationRegistryAbi,
       functionName: "getSummary",
-      args: [agentIdBigInt, [], "starred", ""],
+      args: [agentIdBigInt, clients, "starred", ""],
     })) as readonly [bigint, bigint, number];
 
     const [count, summaryValue, summaryValueDecimals] = result;
