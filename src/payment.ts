@@ -337,7 +337,10 @@ export function selectPaymentRequirements(
 export function createNonce(): Hex {
   const bytes = new Uint8Array(32);
   // Node 18 has no global `crypto` without a flag; fall back to node:crypto.
-  const webcrypto = (globalThis as { crypto?: Crypto }).crypto ?? nodeWebcrypto;
+  // DOM `Crypto` and node's `webcrypto` types differ slightly; both expose getRandomValues.
+  const webcrypto = ((globalThis as { crypto?: unknown }).crypto ?? nodeWebcrypto) as {
+    getRandomValues<T extends Uint8Array>(array: T): T;
+  };
   webcrypto.getRandomValues(bytes);
   return toHex(bytes);
 }
