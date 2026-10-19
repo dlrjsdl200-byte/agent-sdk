@@ -1,0 +1,37 @@
+name: Publish to npm
+
+# Trusted publishing (OIDC): no npm token stored in GitHub. Configure once on
+# npmjs.com -> package -> Settings -> Trusted Publisher:
+#   owner: dlrjsdl200-byte, repository: agent-sdk, workflow: publish.yml
+# Then push a tag (v0.1.2) or run this workflow manually.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      - run: npm install -g npm@latest   # >=11.5.1 required for OIDC trusted publishing
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Refuse to publish if the tag and package.json disagree
+        if: github.ref_type == 'tag'
+        run: |
+          V=$(node -p "require('./package.json').version")
+          [ "refs/tags/v$V" = "$GITHUB_REF" ] || { echo "tag $GITHUB_REF != package.json $V"; exit 1; }
+      - run: npm publish --provenance --access public

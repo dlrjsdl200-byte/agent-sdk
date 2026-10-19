@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Smoke-test the built package (cjs + esm)
+        run: |
+          node -e "const s=require('./dist/index.js'); if(typeof s.createAgent!=='function') process.exit(1); console.log('cjs ok, DEFAULT_MAX_PRICE =', s.DEFAULT_MAX_PRICE)"
+          node --input-type=module -e "import('./dist/index.mjs').then(s=>{ if(typeof s.createAgent!=='function') process.exit(1); console.log('esm ok') })"
