@@ -3,6 +3,28 @@
 All notable changes to `@chain-ops/agent-sdk` are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] — 2026-10-19
+
+### Fixed
+
+- `getTrustScore()` always reverted on Base mainnet: the reference ReputationRegistry rejects an empty `clientAddresses` array (`clientAddresses required`). The SDK now reads `getClients(agentId)` first and returns a neutral score when nobody has left feedback yet. `minCounterpartyScore` works again.
+- `pay()` without `maxPrice` signed whatever amount the 402 asked for. There is now a default hard cap of 1 USDC (`DEFAULT_MAX_PRICE`, exported); pass `maxPrice` explicitly for more expensive resources.
+- Requirements that ask for a Permit2 transfer (`extra.assetTransferMethod !== "eip3009"`) are skipped instead of signed with the wrong scheme.
+- Malformed 402 entries (bad address, non-numeric amount, missing `maxTimeoutSeconds`) are treated as "not compatible" instead of throwing.
+- `createNonce()` works on Node 18 (falls back to `node:crypto` webcrypto).
+- Registration JSON recorded the wrong SDK version (`0.0.1`).
+
+### Changed
+
+- `counterpartyAgentId` is now a typed member of `PayOptions`.
+- `attachIdentity` and `updateReputation` are marked `@deprecated` (accepted, ignored): neither is implemented yet. README no longer claims they are.
+- npm package no longer ships internal `docs/`; `repository` / `bugs` metadata added.
+- Published from GitHub Actions with npm provenance.
+
+## [0.1.1] — 2026-07-15
+
+- npm keywords and README wording only; no code changes.
+
 ## [0.1.0] — 2026-04-20
 
 First public release. One-line x402 × ERC-8004 SDK.

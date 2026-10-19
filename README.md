@@ -1,7 +1,7 @@
 # @chain-ops/agent-sdk
 
-> **One-line SDK for [x402](https://x402.org) payments with [ERC-8004](https://github.com/ethereum/ERCs/blob/master/ERCS/erc-8004.md) agent identity.**
-> Pay, prove, reputation — in a single call. Supports **x402 V1 and V2**.
+> **x402 payment client for AI agents, with [ERC-8004](https://github.com/ethereum/ERCs/blob/master/ERCS/erc-8004.md) identity registration and trust lookup.**
+> `agent.pay(url)` handles the whole 402 handshake. Supports **x402 V1 and V2**.
 
 [![npm](https://img.shields.io/npm/v/@chain-ops/agent-sdk)](https://www.npmjs.com/package/@chain-ops/agent-sdk)
 [![license](https://img.shields.io/npm/l/@chain-ops/agent-sdk)](./LICENSE)
@@ -16,21 +16,17 @@
 [ERC-8004](https://github.com/ethereum/ERCs/blob/master/ERCS/erc-8004.md) gives AI agents an on-chain identity.
 **They don't talk to each other yet.**
 
-Today, a developer has to:
+`@chain-ops/agent-sdk` packages the pieces you need today:
 
-1. Manually call ERC-8004 to mint an agent identity
-2. Manually set up x402 payment middleware
-3. Hand-write the logic to attach identity to payment requests
-4. Hand-write the reputation update after settlement
-5. Hand-write the trust-score lookup before sending money
-
-`@chain-ops/agent-sdk` does all of that in **one line**:
+- **`pay(url)`** — GET, read the 402 (V1 body or V2 header), pick a compatible requirement, sign the EIP-3009 USDC authorization, retry, return the body and the settlement tx hash. One line, no gas spent by the agent.
+- **`registerAgent()`** — mint your ERC-8004 identity on-chain.
+- **`getTrustScore()`** — read any agent's reputation summary, optionally gate `pay()` on it.
 
 ```ts
-await agent.pay("https://api.example.com/premium");
+await agent.pay("https://api.example.com/premium", { maxPrice: 10_000n });
 ```
 
-That's it. Identity is attached. Trust is checked. Reputation is updated. Done.
+What it does **not** do yet (honest roadmap, see [CHANGELOG](./CHANGELOG.md)): attach an identity proof to the request, or write reputation feedback after settlement. Those are planned for 0.2.0.
 
 ---
 
@@ -64,8 +60,8 @@ await agent.registerAgent({
   tags: ["gas", "evm", "trading"],
 });
 
-// 3. Pay for any x402 resource — identity is attached automatically
-const result = await agent.pay("https://api.mgo.chain-ops.xyz/gas/basic");
+// 3. Pay for any x402 resource (default hard cap: 1 USDC per call)
+const result = await agent.pay("https://api.mgo.chain-ops.xyz/gas/basic", { maxPrice: 10_000n });
 console.log(result.body);
 console.log(`Paid ${result.pricePaid} micro-USDC in ${result.elapsedMs}ms`);
 ```
@@ -91,10 +87,9 @@ console.log(identity.id); // ERC-8004 tokenId
 
 ```ts
 const result = await agent.pay("https://api.example.com/data", {
-  attachIdentity: true,         // default
-  minCounterpartyScore: 700,    // reject low-trust servers
-  maxPrice: 10_000n,            // hard cap: 0.01 USDC
-  updateReputation: true,        // default
+  maxPrice: 10_000n,            // hard cap: 0.01 USDC (default when omitted: 1 USDC)
+  minCounterpartyScore: 700,    // reject low-trust servers...
+  counterpartyAgentId: "12345", // ...identified by their ERC-8004 tokenId
 });
 ```
 
@@ -102,10 +97,11 @@ Options:
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `attachIdentity` | `boolean` | `true` | Attach ERC-8004 identity proof to request |
+| `maxPrice` | `bigint` | `1_000_000n` | Hard cap on USDC micro-units (1 USDC by default) |
 | `minCounterpartyScore` | `number` | — | Reject counterparties below this trust score (0–1000) |
-| `maxPrice` | `bigint` | — | Hard cap on USDC micro-units |
-| `updateReputation` | `boolean` | `true` | Update on-chain reputation after success |
+| `counterpartyAgentId` | `string` | — | ERC-8004 tokenId of the server; required with `minCounterpartyScore` |
+| `attachIdentity` | `boolean` | — | **Deprecated, ignored** (not implemented yet) |
+| `updateReputation` | `boolean` | — | **Deprecated, ignored** (not implemented yet) |
 | `network` | `"base" \| ...` | config | Override network for this call |
 | `timeoutMs` | `number` | `30_000` | End-to-end timeout |
 
@@ -113,8 +109,8 @@ Options:
 
 ```ts
 const score = await agent.getTrustScore("12345");
-console.log(score.score); // 0–1000
-console.log(score.components); // { age, settlements, disputes, oracle }
+console.log(score.score); // 0–1000 (500 = neutral, no feedback yet)
+console.log(score.components.settlements); // number of feedback entries
 ```
 
 ---
@@ -156,7 +152,7 @@ The SDK auto-detects protocol version per response:
 | network format | `"base"` | CAIP-2 `"eip155:8453"` |
 | request header | `X-PAYMENT` | `Payment-Signature` |
 
-Requirements are normalized internally so the EIP-3009 signing path is version-agnostic. See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ADR-003 for the design.
+Requirements are normalized internally so the EIP-3009 signing path is version-agnostic. Requirements that ask for a Permit2 transfer are skipped (EIP-3009 only). See [`docs/ARCHITECTURE.md`](https://github.com/dlrjsdl200-byte/agent-sdk/blob/main/docs/ARCHITECTURE.md) ADR-003 for the design.
 
 ---
 
@@ -181,13 +177,9 @@ See [`examples/`](./examples) for more.
 
 ## Status
 
-**🚀 v0.1.0 — Week 1 complete, `pay()` + `registerAgent()` + `getTrustScore()` shipped.** Day 6 dogfood against live MGO surfaced an x402 V2 spec mismatch that's now fixed and tested end-to-end (43 tests, EIP-712 signature recovery verified).
+**Maintenance mode.** `pay()`, `registerAgent()` and `getTrustScore()` are implemented and unit-tested (EIP-712 signature recovery verified against a live MGO V2 fixture). The weekly [Bazaar keepalive](./.github/workflows/bazaar-keepalive.yml) settles a real $0.001 USDC payment through this SDK against [api.mgo.chain-ops.xyz](https://api.mgo.chain-ops.xyz), so the payment path is exercised on mainnet every week. Bug fixes land; new features (identity attachment, reputation writes) are not scheduled.
 
-See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the live timeline.
-Follow along on [`x.com/gjmade`](https://x.com/gjmade) or the
-[`그냥만들었어요`](https://www.youtube.com/@gjmade) YouTube channel.
-
-We have a hard **kill gate** on **2026-04-28**. If adoption signals are insufficient by then, the project is archived transparently. See [`docs/KILL_CRITERIA.md`](./docs/KILL_CRITERIA.md).
+If you only need x402 payments, Coinbase's [`@x402/fetch`](https://www.npmjs.com/package/@x402/fetch) is the reference client; this SDK adds the ERC-8004 identity/trust helpers on top.
 
 ---
 

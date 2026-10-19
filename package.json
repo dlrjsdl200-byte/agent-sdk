@@ -1,7 +1,7 @@
 {
   "name": "@chain-ops/agent-sdk",
-  "version": "0.1.1",
-  "description": "One-line SDK for x402 (V1 + V2) payments with ERC-8004 agent identity. Pay, prove, reputation — in a single call.",
+  "version": "0.1.2",
+  "description": "x402 (V1 + V2) payment client for AI agents with ERC-8004 identity registration and trust lookup. One call: 402 → sign USDC authorization → retry.",
   "keywords": [
     "x402",
     "erc-8004",
@@ -21,6 +21,13 @@
   "license": "MIT",
   "author": "chain-ops.xyz",
   "homepage": "https://chain-ops.xyz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dlrjsdl200-byte/agent-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dlrjsdl200-byte/agent-sdk/issues"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -36,9 +43,9 @@
       }
     }
   },
+  "sideEffects": false,
   "files": [
     "dist",
-    "docs",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
@@ -49,7 +56,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext .ts",
     "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "peerDependencies": {
